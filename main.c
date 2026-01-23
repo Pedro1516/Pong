@@ -92,7 +92,7 @@ Screen *create_screen(Vector2 size, char *name)
     Image icon_game = LoadImageFromMemory(".png", icon.data, icon.size);
     InitWindow(screen->Width, screen->Height, name);
     SetWindowIcon(icon_game);
-    // UnloadImage(icon_game);
+    UnloadImage(icon_game);
     SetTargetFPS(60);
     SetExitKey(KEY_NULL);
 
