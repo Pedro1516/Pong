@@ -24,6 +24,7 @@ GameMode selected_menu = PLAYER_PLAYER;
 typedef struct
 {
     float speed;
+    float max_speed;
     int radius;
     Vector2 direction;
     Vector2 pos;
@@ -54,10 +55,10 @@ float map(float x, float in_min, float in_max, float out_min, float out_max)
 }
 
 // pos + dir * spd
-void move_ball(Ball *ball)
+void move_ball(Ball *ball, float delta_time)
 {
-    ball->pos.x = (ball->pos.x + ball->direction.x * ball->speed);
-    ball->pos.y = (ball->pos.y + ball->direction.y * ball->speed);
+    ball->pos.x = ball->pos.x + ball->direction.x * ball->speed * delta_time;
+    ball->pos.y = ball->pos.y + ball->direction.y * ball->speed * delta_time;
 }
 
 Ball *create_ball(Vector2 position, Vector2 direction)
@@ -65,7 +66,8 @@ Ball *create_ball(Vector2 position, Vector2 direction)
     Ball *ball = (Ball *)malloc(sizeof(Ball));
     ball->pos = position;
     ball->direction = direction;
-    ball->speed = 5;
+    ball->speed = 200;
+    ball->max_speed = 600;
     ball->radius = 10;
 
     return ball;
@@ -74,7 +76,7 @@ Ball *create_ball(Vector2 position, Vector2 direction)
 Player *create_player(Vector2 position, int id)
 {
     Player *player = (Player *)malloc(sizeof(Player));
-    player->speed = 10;
+    player->speed = 500;
     player->id = id;
     player->collision = (Rectangle){position.x, position.y, 20, 100};
 
@@ -90,7 +92,7 @@ Screen *create_screen(Vector2 size, char *name)
     Image icon_game = LoadImageFromMemory(".png", icon.data, icon.size);
     InitWindow(screen->Width, screen->Height, name);
     SetWindowIcon(icon_game);
-   // UnloadImage(icon_game);
+    // UnloadImage(icon_game);
     SetTargetFPS(60);
     SetExitKey(KEY_NULL);
 
@@ -115,8 +117,8 @@ int checkcollision(Ball *ball, Player *player, Screen *screen)
         else
             ball->pos.x = player->collision.x - ball->radius;
 
-        if (ball->speed < 15)
-            ball->speed += 0.3; // Adiciona uma aceleração na colisão
+        if (ball->speed < ball->max_speed)
+            ball->speed += 30; // Adiciona uma aceleração na colisão
 
         return 1;
     }
@@ -127,8 +129,8 @@ int checkcollision(Ball *ball, Player *player, Screen *screen)
         ball->direction.y *= -1;
         // Reposiciona a bola exatamente abaixo da parede superior
         ball->pos.y = top_wall.y + top_wall.height + ball->radius + 1;
-        if (ball->speed < 15)
-            ball->speed += 0.3; // Adiciona uma aceleração na colisão
+        if (ball->speed < ball->max_speed)
+            ball->speed += 30; // Adiciona uma aceleração na colisão
 
         return 1;
     }
@@ -148,53 +150,55 @@ int checkcollision(Ball *ball, Player *player, Screen *screen)
     return 0;
 }
 
-void ia_bot(Ball *ball, Screen *screen, Player *player)
+void reset_ball(Ball *ball, Screen *screen, float directionX)
 {
-    float distance = abs(ball->pos.y - player->collision.y + player->collision.height / 2);
-    if (player->collision.y + player->collision.height / 2 < ball->pos.y)
-    {
-
-        player->collision.y += player->speed;
-    }
-
-    if (player->collision.y + player->collision.height / 2 > ball->pos.y)
-    {
-
-        player->collision.y -= player->speed;
-    }
-
-    if (player->collision.y < 0)
-        player->collision.y = 1;
-
-    if (player->collision.y + player->collision.height >= screen->Height)
-        player->collision.y = screen->Height - player->collision.height + 2;
+    ball->pos = (Vector2){screen->Width / 2, screen->Height / 2};
+    ball->direction = (Vector2){directionX, 0.25f};
+    ball->speed = 200;
 }
 
-void move_player(Player *player, Screen *screen)
+void ia_bot(Ball *ball, Screen *screen, Player *bot, float dt)
+{
+    float distance = ball->pos.y - (bot->collision.y + bot->collision.height / 2);
+    float bot_speed = 500.0f;
+
+    if (fabsf(distance) > 5.0f)
+    {
+        bot->collision.y += distance * 10.0f * dt;
+    }
+
+    if (bot->collision.y < 0)
+        bot->collision.y = 0;
+
+    if (bot->collision.y + bot->collision.height >= screen->Height)
+        bot->collision.y = screen->Height - bot->collision.height;
+}
+
+void move_player(Player *player, Screen *screen, float dt)
 {
     if (player->id == 1)
     {
 
-        if (player->collision.y && (IsKeyDown(KEY_W) > 0 || (IsGamepadAvailable(0) && IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_UP))))
+        if (player->collision.y > 0 && (IsKeyDown(KEY_W) || (IsGamepadAvailable(0) && IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_UP))))
         {
-            player->collision.y -= player->speed;
+            player->collision.y -= player->speed * dt;
         }
         else if (player->collision.y + player->collision.height < screen->Height && (IsKeyDown(KEY_S) || (IsGamepadAvailable(0) && IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN))))
         {
 
-            player->collision.y += player->speed;
+            player->collision.y += player->speed * dt;
         }
     }
 
     else if (player->id == 2)
     {
-        if (player->collision.y > 0 && (IsKeyDown(KEY_UP) || (IsGamepadAvailable(1) && IsGamepadButtonDown(1, GAMEPAD_BUTTON_LEFT_FACE_DOWN))))
+        if (player->collision.y > 0 && (IsKeyDown(KEY_UP) || (IsGamepadAvailable(1) && IsGamepadButtonDown(1, GAMEPAD_BUTTON_LEFT_FACE_UP))))
         {
-            player->collision.y -= player->speed;
+            player->collision.y -= player->speed * dt;
         }
-        else if (player->collision.y + player->collision.height < screen->Height && (IsKeyDown(KEY_DOWN) || (IsGamepadAvailable(1) && IsGamepadButtonDown(1, GAMEPAD_BUTTON_LEFT_FACE_UP))))
+        else if (player->collision.y + player->collision.height < screen->Height && (IsKeyDown(KEY_DOWN) || (IsGamepadAvailable(1) && IsGamepadButtonDown(1, GAMEPAD_BUTTON_LEFT_FACE_DOWN))))
         {
-            player->collision.y += player->speed;
+            player->collision.y += player->speed * dt;
         }
     }
 }
@@ -204,14 +208,12 @@ int update_score(Screen *screen, Score *score, Ball *ball)
     if (ball->pos.x > screen->Width)
     {
         score->player1_score++;
-        free(ball);
         return 1;
     }
 
     if (ball->pos.x < 0)
     {
         score->player2_score++;
-        free(ball);
         return -1;
     }
 
@@ -235,6 +237,7 @@ void draw_score(Score *score, Screen *screen)
 
 void reset_game(Player *player1, Player *player2, Screen *screen, Score *score, Ball *ball)
 {
+    reset_ball(ball, screen, 1.0f);
     player1->collision.y = screen->Height / 2 - player1->collision.height;
     player2->collision.y = screen->Height / 2 - player2->collision.height;
     score->player1_score = 0;
@@ -253,7 +256,7 @@ int victory(Player *player1, Player *player2, Screen *screen, Score *score, Ball
     {
         reset_game(player1, player2, screen, score, ball);
 
-        return 1;
+        return 2;
     }
 
     return 0;
@@ -320,9 +323,6 @@ int change_game_mode(Vector2 mousepoint, GameMode *game_mode, Rectangle btn[2])
 
 int draw_menu(Screen *screen, Vector2 mousepoint, GameMode *game_mode)
 {
-
-    DrawText(TextFormat("x: %f   y: %f", mousepoint.x, mousepoint.y), 10, 10, 20, WHITE);
-
     const char *title = "PONG";
     int font_size_title = 45;
     int title_size = MeasureText(title, font_size_title);
@@ -345,6 +345,7 @@ int main()
     Score *score = create_score();
     GameMode *game_mode = create_game_mode();
     bool start = false;
+    int victory_status = 0;
 
     InitAudioDevice();
     Wave hit_wave = LoadWaveFromMemory(".wav", audio.data, audio.size);
@@ -354,6 +355,7 @@ int main()
 
     while (!WindowShouldClose())
     {
+        float dt = GetFrameTime();
         Vector2 mousepoint = GetMousePosition();
         BeginDrawing();
         ClearBackground(BLACK);
@@ -375,8 +377,8 @@ int main()
             if (start)
             {
 
-                move_ball(ball);
-                move_player(player1, screen);
+                move_ball(ball, dt);
+                move_player(player1, screen, dt);
                 if (checkcollision(ball, player1, screen))
                 {
                     PlaySound(hit_sound);
@@ -393,9 +395,9 @@ int main()
 
                 // Alterna o controle entre player 2 e bot
                 if (*game_mode == PLAYER_PLAYER)
-                    move_player(player2, screen);
+                    move_player(player2, screen, dt);
                 else if (*game_mode == PLAYER_BOT)
-                    ia_bot(ball, screen, player2);
+                    ia_bot(ball, screen, player2, dt);
             }
             else
             {
@@ -411,10 +413,11 @@ int main()
             int pts = update_score(screen, score, ball);
             if (pts)
             {
-                ball = create_ball((Vector2){screen->Width / 2, screen->Height / 2}, (Vector2){pts * 1, .25});
+                reset_ball(ball, screen, pts * 1.0f);
             }
 
-            if (victory(player1, player2, screen, score, ball))
+            victory_status = victory(player1, player2, screen, score, ball);
+            if (victory_status)
                 status = STATE_GAMEOVER;
 
             if (IsKeyPressed(KEY_ESCAPE) || (IsGamepadAvailable(0) && IsGamepadButtonDown(0, GAMEPAD_BUTTON_MIDDLE_RIGHT)) || (IsGamepadAvailable(1) && IsGamepadButtonDown(1, GAMEPAD_BUTTON_MIDDLE_RIGHT)))
@@ -426,7 +429,7 @@ int main()
 
         if (status == STATE_GAMEOVER)
         {
-            const char *text1 = TextFormat("Vitoria do jogador %d!", score->player1_score >= 3 ? 1 : 2);
+            const char *text1 = TextFormat("Vitória do jogador %d!", victory_status);
             const char *text2 = (IsGamepadAvailable(0) || IsGamepadAvailable(1) ? "Press R to Select or Start button" : "Press R to Restart");
             const char *text3 = (IsGamepadAvailable(0) || IsGamepadAvailable(1) ? "Press M to return to the menu or Start button" : "Press M to return to the menu");
 
