@@ -1,3 +1,5 @@
+#define SUPPORT_EXTERN_CONFIG
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -16,6 +18,8 @@ typedef enum
     PLAYER_PLAYER = 0,
     PLAYER_BOT = 1
 } GameMode;
+
+GameMode selected_menu = PLAYER_PLAYER;
 
 typedef struct
 {
@@ -83,7 +87,10 @@ Screen *create_screen(Vector2 size, char *name)
     screen->Width = (int)size.x;
     screen->Height = (int)size.y;
 
+    Image icon_game = LoadImageFromMemory(".png", icon.data, icon.size);
     InitWindow(screen->Width, screen->Height, name);
+    SetWindowIcon(icon_game);
+   // UnloadImage(icon_game);
     SetTargetFPS(60);
     SetExitKey(KEY_NULL);
 
@@ -258,16 +265,56 @@ GameMode *create_game_mode()
     return game_mode;
 }
 
-int change_game_mode(Vector2 mousepoint, GameMode *game_mode, Rectangle btn, GameMode mode)
+Rectangle draw_button(const char *text, int font_size, Vector2 pos, Vector2 bnt_size)
 {
-    if (CheckCollisionPointRec(mousepoint, btn))
+    Rectangle btn = (Rectangle){pos.x, pos.y, bnt_size.x, bnt_size.y};
+    DrawRectangleRec(btn, WHITE);
+    DrawRectangle(pos.x + 5, pos.y + 5, bnt_size.x - 10, bnt_size.y - 10, BLACK);
+
+    int text_size = MeasureText(text, font_size);
+    DrawText(text, pos.x + bnt_size.x / 2 - text_size / 2, pos.y + 55 - font_size / 2, font_size, WHITE);
+
+    return btn;
+}
+
+int change_game_mode(Vector2 mousepoint, GameMode *game_mode, Rectangle btn[2])
+{
+    int mouse_collision[2] = {0, 0};
+
+    for (int i = 0; i < 2; i++)
     {
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+        mouse_collision[i] = CheckCollisionPointRec(mousepoint, btn[i]);
+        if (mouse_collision[i])
         {
-            *game_mode = mode;
-            return 1;
+            btn[i].width += 10;
+            btn[i].height += 10;
+            selected_menu = i;
+            draw_button(selected_menu == PLAYER_PLAYER ? "Player vs Player" : "Player vs Bot", 35, (Vector2){btn[i].x - 5, btn[i].y - 5}, (Vector2){btn[i].width, btn[i].height});
+
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+            {
+                *game_mode = selected_menu;
+                return 1;
+            }
         }
     }
+
+    if ((IsGamepadAvailable(0) || IsGamepadAvailable(1)) && !(mouse_collision[0] || mouse_collision[1]))
+    {
+        if ((IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN) || IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_UP)) || (IsGamepadButtonPressed(1, GAMEPAD_BUTTON_LEFT_FACE_DOWN) || IsGamepadButtonPressed(1, GAMEPAD_BUTTON_LEFT_FACE_UP)))
+            selected_menu = !selected_menu;
+
+        if (IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN) || IsGamepadButtonPressed(1, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))
+        {
+            *game_mode = selected_menu;
+            return 1;
+        }
+
+        btn[selected_menu].width += 10;
+        btn[selected_menu].height += 10;
+        draw_button(selected_menu == PLAYER_PLAYER ? "Player vs Player" : "Player vs Bot", 35, (Vector2){btn[selected_menu].x - 5, btn[selected_menu].y - 5}, (Vector2){btn[selected_menu].width, btn[selected_menu].height});
+    }
+
     return 0;
 }
 
@@ -281,25 +328,11 @@ int draw_menu(Screen *screen, Vector2 mousepoint, GameMode *game_mode)
     int title_size = MeasureText(title, font_size_title);
     DrawText(title, screen->Width / 2 - title_size / 2, 20, font_size_title, WHITE);
 
-    Rectangle btn_player = (Rectangle){screen->Width / 2 - 200 + 5, screen->Height / 2 - 110 + 5, 390, 90};
-    DrawRectangle(screen->Width / 2 - 200, screen->Height / 2 - 110, 400, 100, WHITE);
-    DrawRectangleRec(btn_player, BLACK);
+    Rectangle btn_player = draw_button("Player vs Player", 35, (Vector2){screen->Width / 2 - 200, screen->Height / 2 - 110}, (Vector2){400, 100});
+    Rectangle btn_bot = draw_button("Player vs Bot", 35, (Vector2){screen->Width / 2 - 200, screen->Height / 2 + 10}, (Vector2){400, 100});
+    Rectangle list_btn[2] = {btn_player, btn_bot};
 
-    const char *player = "Player vs Player";
-    int font_size_player = 35;
-    int player_size = MeasureText(player, font_size_player);
-    DrawText(player, screen->Width / 2 - player_size / 2, screen->Height / 2 - 55 - font_size_player / 2, font_size_player, WHITE);
-
-    Rectangle btn_bot = (Rectangle){screen->Width / 2 - 200 + 5, screen->Height / 2 + 10 + 5, 390, 90};
-    DrawRectangle(screen->Width / 2 - 200, screen->Height / 2 + 10, 400, 100, WHITE);
-    DrawRectangleRec(btn_bot, BLACK);
-
-    const char *bot = "Player vs Bot";
-    int font_size_bot = 35;
-    int bot_size = MeasureText(bot, font_size_bot);
-    DrawText(bot, screen->Width / 2 - bot_size / 2, screen->Height / 2 + 30 + font_size_bot / 2, font_size_bot, WHITE);
-
-    return change_game_mode(mousepoint, game_mode, btn_player, PLAYER_PLAYER) || change_game_mode(mousepoint, game_mode, btn_bot, PLAYER_BOT);
+    return change_game_mode(mousepoint, game_mode, list_btn);
 }
 
 int main()
@@ -314,9 +347,10 @@ int main()
     bool start = false;
 
     InitAudioDevice();
-    Wave hit_wave = LoadWaveFromMemory(".wav", pong_audio, pong_audio_size);
+    Wave hit_wave = LoadWaveFromMemory(".wav", audio.data, audio.size);
     Sound hit_sound = LoadSoundFromWave(hit_wave);
     SetSoundVolume(hit_sound, 0.2f);
+    UnloadWave(hit_wave);
 
     while (!WindowShouldClose())
     {
@@ -344,10 +378,18 @@ int main()
                 move_ball(ball);
                 move_player(player1, screen);
                 if (checkcollision(ball, player1, screen))
+                {
                     PlaySound(hit_sound);
+                    if (IsGamepadAvailable(0))
+                        SetGamepadVibration(0, 1.0f, 1.0f, 1.0f);
+                }
 
                 if (checkcollision(ball, player2, screen))
+                {
                     PlaySound(hit_sound);
+                    if (IsGamepadAvailable(1))
+                        SetGamepadVibration(0, 1.0f, 1.0f, 1.0f);
+                }
 
                 // Alterna o controle entre player 2 e bot
                 if (*game_mode == PLAYER_PLAYER)
@@ -357,11 +399,11 @@ int main()
             }
             else
             {
-                const char *text = "Aperte Space para começar!";
+                const char *text = (IsGamepadAvailable(0) || IsGamepadAvailable(1) ? "Aperte Space para começar ou Y no Gamepad!" : "Aperte Space para começar!");
                 DrawText(text, screen->Width / 2 - MeasureText(text, 25) / 2, screen->Height - 35, 25, WHITE);
             }
 
-            if (IsKeyDown(KEY_SPACE))
+            if (IsKeyDown(KEY_SPACE) || (IsGamepadAvailable(0) && IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_FACE_UP)) || (IsGamepadAvailable(1) && IsGamepadButtonDown(1, GAMEPAD_BUTTON_RIGHT_FACE_UP)))
             {
                 start = true;
             }
@@ -375,7 +417,7 @@ int main()
             if (victory(player1, player2, screen, score, ball))
                 status = STATE_GAMEOVER;
 
-            if (IsKeyPressed(KEY_ESCAPE))
+            if (IsKeyPressed(KEY_ESCAPE) || (IsGamepadAvailable(0) && IsGamepadButtonDown(0, GAMEPAD_BUTTON_MIDDLE_RIGHT)) || (IsGamepadAvailable(1) && IsGamepadButtonDown(1, GAMEPAD_BUTTON_MIDDLE_RIGHT)))
             {
                 reset_game(player1, player2, screen, score, ball);
                 status = STATE_MENU;
@@ -385,21 +427,21 @@ int main()
         if (status == STATE_GAMEOVER)
         {
             const char *text1 = TextFormat("Vitoria do jogador %d!", score->player1_score >= 3 ? 1 : 2);
-            const char *text2 = "Press R to Restart";
-            const char *text3 = "Press M to return to the menu";
+            const char *text2 = (IsGamepadAvailable(0) || IsGamepadAvailable(1) ? "Press R to Select or Start button" : "Press R to Restart");
+            const char *text3 = (IsGamepadAvailable(0) || IsGamepadAvailable(1) ? "Press M to return to the menu or Start button" : "Press M to return to the menu");
 
             DrawText(text1, screen->Width / 2 - MeasureText(text1, 40) / 2, screen->Height / 2 - 50, 40, RED);
             DrawText(text2, screen->Width / 2 - MeasureText(text2, 20) / 2, screen->Height / 2, 20, WHITE);
             DrawText(text3, screen->Width / 2 - MeasureText(text3, 20) / 2, screen->Height / 2 + 20, 20, WHITE);
 
-            if (IsKeyPressed(KEY_R))
+            if (IsKeyPressed(KEY_R) || (IsGamepadAvailable(0) && IsGamepadButtonDown(0, GAMEPAD_BUTTON_MIDDLE_LEFT)) || (IsGamepadAvailable(1) && IsGamepadButtonDown(1, GAMEPAD_BUTTON_MIDDLE_LEFT)))
             {
                 reset_game(player1, player2, screen, score, ball);
                 status = STATE_PLAYING;
                 start = false;
             }
 
-            if (IsKeyPressed(KEY_M))
+            if (IsKeyPressed(KEY_M) || (IsGamepadAvailable(0) && IsGamepadButtonDown(0, GAMEPAD_BUTTON_MIDDLE_RIGHT)) || (IsGamepadAvailable(1) && IsGamepadButtonDown(1, GAMEPAD_BUTTON_MIDDLE_RIGHT)))
             {
                 reset_game(player1, player2, screen, score, ball);
                 status = STATE_MENU;
@@ -416,6 +458,8 @@ int main()
 
         EndDrawing();
     }
+
+    UnloadSound(hit_sound);
 
     CloseWindow();
     free(player1);
